@@ -2,9 +2,15 @@ import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.event.TableModelEvent;
+import javax.swing.AbstractAction;
+import java.awt.event.KeyEvent;
+import javax.swing.KeyStroke;
+
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -23,6 +29,26 @@ public class ResumeBuilderGUI extends JFrame {
     private List<ResumeData> resumeEntries;
     private JTable dataTable;
     private DefaultTableModel tableModel;
+    private JScrollPane scrollPane;
+
+    // --- Inner class for data structure ---
+    /**
+     * Simple data structure to hold resume entry.
+     */
+    static class ResumeData {
+        private String fieldName;
+        private String value;
+
+        public ResumeData(String fieldName, String value) {
+            this.fieldName = fieldName;
+            this.value = value;
+        }
+
+        public String getFieldName() { return fieldName; }
+        public String getValue() { return value; }
+        public void setValue(String value) { this.value = value; }
+    }
+    // --------------------------------------
 
     public ResumeBuilderGUI() {
         super("Java Swing Resume Builder");
@@ -36,28 +62,34 @@ public class ResumeBuilderGUI extends JFrame {
         setupTable();
         setupControls();
         
-        // Initial call to adjust heights after the table is fully set up
-        adjustRowHeights();
+        // Removed initial adjustRowHeights() call and rely on the ComponentListener
+        // to fire when the GUI is properly sized.
 
         setVisible(true);
     }
     
     // Initializes the table with default resume data
     private void initializeData() {
-        resumeEntries.add(new ResumeData("Name", "Jane Doe"));
+        resumeEntries.add(new ResumeData("Name", "Juan Dela Cruz"));
         resumeEntries.add(new ResumeData("Role", "Senior Software Engineer"));
-        resumeEntries.add(new ResumeData("Email", "jane.doe@email.com"));
-        resumeEntries.add(new ResumeData("LinkedIn", "https://linkedin.com/in/janedoe"));
+        resumeEntries.add(new ResumeData("Email", "jdelacruz@email.com"));
+        resumeEntries.add(new ResumeData("LinkedIn", "https://linkedin.com/in/juandelacruz"));
         
         // Example of a LONG text entry that requires wrapping
         resumeEntries.add(new ResumeData("Professional Summary", "Highly motivated Full-Stack Software Developer with extensive experience across the entire development lifecycle, specializing in complex enterprise solutions using Java, Spring Boot, and modern React/Angular frontend frameworks. Proven ability to deliver scalable and efficient code in fast-paced Agile environments. Seeking to leverage skills in a challenging technical role."));
         
-        resumeEntries.add(new ResumeData("Experience", "Software Engineer at Tech Solutions Company Corp. | Apr 2025 - Present. Developed and maintained core microservices for customer data processing, resulting in a 20% reduction in latency. Led a team of three junior developers in the migration to a new cloud platform. Optimized database queries and deployed containerized services using Kubernetes."));
+        resumeEntries.add(new ResumeData("Experience", "Software Engineer at Tech Solutions Company Corp. | Apr 2025 - Present. Developed and maintained core microservices for customer data processing."));
         
         resumeEntries.add(new ResumeData("Key Achievements", "Performance Optimization Reduced the average API response time for a major product by 40ms by implementing query caching and optimizing database indexes. Mentored new hires."));
         resumeEntries.add(new ResumeData("Education", "Bachelor of Science in Computer Science | 2018 - 2022 | University of Technology"));
         resumeEntries.add(new ResumeData("Skills", "Programming: Java, Python, C++, TypeScript; Frameworks: Spring Boot, React, Node.js; Cloud/DevOps: AWS, Docker, Kubernetes, Jenkins; Databases: PostgreSQL, MongoDB"));
-        resumeEntries.add(new ResumeData("Interests", "Cybersecurity & Ethical Hacking; Actively researching security vulnerabilities and participating in bug bounty programs."));
+        
+        // Languages Entry
+        resumeEntries.add(new ResumeData("Languages", 
+            "Filipino - Native\n" + 
+            "English - Fluent\n"));
+        
+        resumeEntries.add(new ResumeData("Interests", "Cybersecurity \\& Ethical Hacking; Actively researching security vulnerabilities and participating in bug bounty programs."));
     }
 
     private void setupTable() {
@@ -90,36 +122,53 @@ public class ResumeBuilderGUI extends JFrame {
                 int row = e.getFirstRow();
                 int col = e.getColumn();
                 if (col == 1) { 
+                    // This block executes ONLY after cell editing is successfully stopped/committed (Ctrl+Enter).
                     String newValue = (String) tableModel.getValueAt(row, col);
                     if (row >= 0 && row < resumeEntries.size()) {
                         resumeEntries.get(row).setValue(newValue);
-                        // Call adjustment method only after data change
+                        // Call adjustment method after data change
                         SwingUtilities.invokeLater(() -> adjustRowHeights());
                     }
                 }
             }
         });
         
-        JScrollPane scrollPane = new JScrollPane(dataTable);
+        scrollPane = new JScrollPane(dataTable);
+        
+        // FIX: Add a ComponentListener to fire the row adjustment 
+        // after the component has been resized and columns have non-zero width.
+        scrollPane.addComponentListener(new ComponentAdapter() {
+            private boolean adjusted = false;
+            @Override
+            public void componentResized(ComponentEvent e) {
+                // Only run adjustment once to fix initial display issues
+                if (!adjusted) {
+                    SwingUtilities.invokeLater(() -> adjustRowHeights());
+                    adjusted = true;
+                }
+            }
+        });
+
         add(scrollPane, BorderLayout.CENTER);
     }
     
     /**
      * Calculates the required height for every row based on the wrapped content 
-     * and sets the row heights on the table. This prevents flickering.
+     * and sets the row heights on the table.
      */
     private void adjustRowHeights() {
+        // Prevent action if the table is not yet visible or columns are not ready
+        if (dataTable.getColumnModel().getColumnCount() < 2) return; 
+        
         TextAreaRenderer renderer = new TextAreaRenderer();
-        for (int row = 0; row < dataTable.getRowCount(); row++) {
-            // Check if the table is ready (has columns/data)
-            if (dataTable.getColumnModel().getColumnCount() < 2) continue; 
-            
-            // Get the width of the column the renderer will use
-            int columnWidth = dataTable.getColumnModel().getColumn(1).getWidth();
-            
-            // Must have a minimum width to calculate wrapping correctly
-            if (columnWidth < 50) return; 
+        // Get the width of the column the renderer will use
+        int columnWidth = dataTable.getColumnModel().getColumn(1).getWidth();
 
+        // If width is zero (not yet laid out), do nothing.
+        if (columnWidth <= 0) return; 
+
+        for (int row = 0; row < dataTable.getRowCount(); row++) {
+            
             // Set the width of the temporary renderer component for correct size calculation
             renderer.setSize(columnWidth, Integer.MAX_VALUE); 
             
@@ -146,7 +195,6 @@ public class ResumeBuilderGUI extends JFrame {
         JPanel controlPanel = new JPanel(new FlowLayout());
         
         JButton addButton = new JButton("Add New Entry");
-        // Renamed button text to reflect the new output format
         JButton generateLatexButton = new JButton("Generate PDF (.tex)");
         
         addButton.addActionListener(new AddEntryListener());
@@ -243,9 +291,15 @@ public class ResumeBuilderGUI extends JFrame {
         // --- Resume Content Sections ---
         for (ResumeData data : entries) {
             String field = data.getFieldName();
-            String value = data.getValue()
-                               // Simple LaTeX escaping: replace & with \& (for math/commands)
-                               .replace("&", "\\&");
+            String value = data.getValue();
+            
+            // 1. Escape LaTeX special characters (like &)
+            value = value.replace("&", "\\&");
+            
+            // 2. Convert Java newlines (\n) to LaTeX forced line breaks (\\)
+            value = value.replace("\r\n", "\\\\ "); // Replace Windows/Java newlines first
+            value = value.replace("\n", "\\\\ ");  // Replace Unix newlines
+
             String lowerField = field.toLowerCase();
 
             // Skip fields already used in the header
@@ -268,7 +322,7 @@ public class ResumeBuilderGUI extends JFrame {
 
             JOptionPane.showMessageDialog(ResumeBuilderGUI.this, 
                 "Success! Resume content written to file: " + filename + 
-                "\n(Check your current directory for this .tex file to view the PDF preview.)",
+                "\n\nREMINDER: After editing a cell, you MUST press Ctrl + Enter to save the value.",
                 "PDF Generation Complete", 
                 JOptionPane.INFORMATION_MESSAGE);
 
@@ -281,7 +335,7 @@ public class ResumeBuilderGUI extends JFrame {
     }
 
     // =========================================================
-    // CUSTOM RENDERER AND EDITOR FOR TEXT WRAPPING (UNCHANGED)
+    // CUSTOM RENDERER AND EDITOR FOR TEXT WRAPPING
     // =========================================================
     
     /**
@@ -321,12 +375,27 @@ public class ResumeBuilderGUI extends JFrame {
         protected JTextArea textArea;
 
         public TextAreaEditor() {
-            super(new JCheckBox());
+            // Use JTextField for super call, but the actual editor component is the JTextArea
+            super(new JTextField()); 
+            
             textArea = new JTextArea();
             textArea.setLineWrap(true);
             textArea.setWrapStyleWord(true);
             textArea.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
-            // Put the JTextArea inside a JScrollPane for long edits
+
+            // CRUCIAL: Add key binding to explicitly stop editing on Ctrl+Enter
+            // This forces the value to be committed to the table model.
+            textArea.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.CTRL_DOWN_MASK), "stopEdit");
+            textArea.getActionMap().put("stopEdit", new AbstractAction() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    stopCellEditing(); 
+                }
+            });
+            
+            // Allow the default Enter key to insert a newline in the JTextArea
+            textArea.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "insert-break");
+
             editorComponent = new JScrollPane(textArea);
         }
 
