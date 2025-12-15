@@ -8,10 +8,11 @@ Path: C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot\bin
 STEP 2: Open a new CMD TERMINAL
 make sure in the cmd you're in your root project directory: ResumeBuilderProject>
 
-
+javac ResumeBuilderGUI.java
 step 2(compile): javac ResumeBuilderGUI.java ResumeData.java
 
 STEP 3 RUN THE APP: java ResumeBuilderGUI
 
 CONVERT THE TEX FILE IN: https://www.vertopal.com/en/convert/latex-to-pdf
+
 
